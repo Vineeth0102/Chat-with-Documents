@@ -77,3 +77,79 @@ Follow the steps below to clone and run the project on your local system:
 ```bash
 git clone https://github.com/your-username/chat-with-files.git
 cd chat-with-files
+```
+### Step 2: Set Up the Environment
+#### 1. Install Python (version 3.8+ recommended).
+#### 2. Create a virtual environment:
+```bash
+python -m venv venv
+```
+#### 3. Activate the virtual environment:
+<li>
+  For macOS/Linux:
+</li>
+
+```bash
+source venv/bin/activate
+```
+<li>
+  For Windows:
+</li>
+
+```bash
+venv\Scripts\activate
+```
+### Step 4: Install the required dependencies
+```bash
+pip install -r requirements.txt
+```
+## Step 3: Set Up Google Generative AI API Key
+### 1.Create a `.env` file in the root of the project.
+### 2.Add your Google API Key to the `.env` file:
+```bash
+GOOGLE_API_KEY=your-api-key-here
+```
+
+## Step 4: Run the Streamlit App
+```bash
+streamlit run app.py
+```
+
+## How to Use Files
+
+Once the environment is set up and the app is running, you can upload and interact with PDF, Word, and Excel files for either Q&A or data analysis. Follow these steps:
+
+#### Upload Files
+1. **Navigate to the Sidebar**: On the left side of the app, you will see a "Menu" section where you can upload files.
+
+2. **Upload Your Files**:
+   - Click the "Upload Files (PDF, Excel, Word)" button.
+   - Select one or multiple files to upload. The supported file formats are:
+     - **PDF**
+     - **Word Document (.docx)**
+     - **Excel Spreadsheet (.xlsx, .xls)**
+
+#### Select the Mode
+After uploading your files, you can choose one of the following modes:
+- **Q&A**: Interact with the content of the files by asking questions.
+- **Data Analysis with Excel**: Perform basic data analysis on the uploaded Excel files.
+
+#### Q&A Mode
+1. **Ask a Question**: 
+   - After selecting the Q&A mode, type your question in the text input box.
+   - The app will use the content of your uploaded files to generate an answer based on the most relevant information.
+
+2. **Submit the Question**: 
+   - Click the "Submit & Process" button. The app will process the uploaded files and answer your question.
+
+#### Data Analysis with Excel Mode
+1. **View Excel Data**: 
+   - The app will display the first few rows of each uploaded Excel sheet.
+   - It will also show summary statistics such as the mean, median, and standard deviation of numerical columns.
+
+2. **Comparison of DataFrames**: 
+   - If you upload multiple Excel files, the app will compute the correlation between matching columns in the files and display the results.
+
+---
+
+That's it! You are now ready to interact with your files, whether for Q&A or data analysis.
