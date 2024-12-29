@@ -11,35 +11,38 @@ from langchain.prompts import PromptTemplate
 from dotenv import load_dotenv
 import pandas as pd
 from docx import Document
+import re  # For handling filename patterns if needed
+import time  # Optional, for adding delays or time-based operations
+
 
 load_dotenv()
 os.getenv("GOOGLE_API_KEY")
+
+# Configure Google Generative AI
 genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
 
-# Function to extract text from PDF
-def get_pdf_text(pdf_docs):
+# Function to extract text from PDFs
+def extract_pdf_text(file):
     text = ""
-    for pdf in pdf_docs:
-        pdf_reader = PdfReader(pdf)
-        for page in pdf_reader.pages:
-            text += page.extract_text()
+    pdf_reader = PdfReader(file)
+    for page in pdf_reader.pages:
+        text += page.extract_text()
     return text
 
-# Function to extract text from Excel
-def get_excel_text(excel_files):
+# Function to extract text from Word documents
+def extract_word_text(file):
     text = ""
-    for file in excel_files:
-        df = pd.read_excel(file)
-        text += df.to_string(index=False)
+    doc = Document(file)
+    for para in doc.paragraphs:
+        text += para.text + "\n"
     return text
 
-# Function to extract text from Word
-def get_word_text(word_docs):
+# Function to extract text from Excel sheets (concatenating all cells)
+def extract_excel_text(file):
     text = ""
-    for doc in word_docs:
-        document = Document(doc)
-        for para in document.paragraphs:
-            text += para.text + "\n"
+    df = pd.read_excel(file)
+    for column in df.columns:
+        text += " ".join(df[column].astype(str).tolist()) + "\n"
     return text
 
 # Function to split text into chunks
@@ -54,15 +57,17 @@ def get_vector_store(text_chunks):
     vector_store = FAISS.from_texts(text_chunks, embedding=embeddings)
     vector_store.save_local("faiss_index")
 
-# Function to set up the conversational chain
+# Function to set up a conversational chain
 def get_conversational_chain():
     prompt_template = """
-    Answer the question as detailed as possible from the provided context, make sure to provide all the details. 
-    If the answer is not in the provided context, just say, "Answer is not available in the context." 
-    Don't provide incorrect information.
+    Answer the question as detailed as possible from the provided context. Make sure to provide all the details. If the answer is not in
+    the provided context, just say, "answer is not available in the context". Don't provide the wrong answer.
 
-    Context:\n {context}\n
-    Question:\n {question}\n
+    Context:
+    {context}?
+    Question:
+    {question}
+
     Answer:
     """
     model = ChatGoogleGenerativeAI(model="gemini-pro", temperature=0.3)
@@ -70,43 +75,103 @@ def get_conversational_chain():
     chain = load_qa_chain(model, chain_type="stuff", prompt=prompt)
     return chain
 
-# Function to handle user questions
+# Function to handle user input and generate response
 def user_input(user_question):
     embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
-    new_db = FAISS.load_local("faiss_index", embeddings, allow_dangerous_deserialization=True)
+    new_db = FAISS.load_local("faiss_index", embeddings)
     docs = new_db.similarity_search(user_question)
     chain = get_conversational_chain()
     response = chain({"input_documents": docs, "question": user_question}, return_only_outputs=True)
-    st.write("Reply: ", response["output_text"])
+    st.write("Reply:", response["output_text"])
 
-# Main function
+# Function to analyze Excel data
+def analyze_excel(files):
+    dataframes = []
+    for file in files:
+        df = pd.read_excel(file)
+        dataframes.append(df)
+    
+    # Example Analysis: Basic stats
+    st.write("### Uploaded Excel Data:")
+    for i, df in enumerate(dataframes):
+        st.write(f"**Sheet {i + 1}:**")
+        st.write(df.head())  # Display first few rows
+        st.write("**Summary Statistics:")
+        st.write(df.describe())  # Basic stats
+
+    # Example: Compare DataFrames if more than one
+    if len(dataframes) > 1:
+        st.write("### Comparison:")
+        for col in dataframes[0].columns:
+            if col in dataframes[1].columns:
+                st.write(f"**Correlation for column `{col}`:**")
+                correlation = dataframes[0][col].corr(dataframes[1][col])
+                st.write(f"Correlation: {correlation:.2f}")
+
+# Universal function to extract or analyze files
+def process_files(files, mode):
+    if mode == "Data Analysis with Excel":
+        st.write("Performing Excel data analysis...")
+        analyze_excel(files)
+        return None  # Skip text chunking and vector store creation
+    else:
+        text = ""
+        for file in files:
+            file_name = file.name
+            if file_name.endswith(".pdf"):
+                text += extract_pdf_text(file)
+            elif file_name.endswith(".docx"):
+                text += extract_word_text(file)
+            elif file_name.endswith((".xlsx", ".xls")):
+                text += extract_excel_text(file)
+            else:
+                st.warning(f"Unsupported file format: {file_name}")
+        return text
+
 def main():
-    st.set_page_config("Chat with Files")
-    st.header("Chat with Your Files using Gemini 💁")
+    st.set_page_config("Chat with Files & Analyze Excel")
+    st.header("Chat with Your Files or Analyze Excel 📊")
 
-    user_question = st.text_input("Ask a Question from the Uploaded Files")
-    if user_question:
-        user_input(user_question)
+    # Dropdown menu for mode selection
+    mode = st.selectbox("Select Mode:", ["Q&A", "Data Analysis with Excel"])
+
+    user_question = ""
+    processed_text = None  # Initialize with a default value
+
+    if mode == "Q&A":
+        user_question = st.text_input("Ask a Question from the Uploaded Files (if applicable)")
 
     with st.sidebar:
         st.title("Menu:")
-        pdf_docs = st.file_uploader("Upload PDF Files", accept_multiple_files=True, type=["pdf"])
-        excel_files = st.file_uploader("Upload Excel Files", accept_multiple_files=True, type=["xlsx", "xls"])
-        word_docs = st.file_uploader("Upload Word Documents", accept_multiple_files=True, type=["docx"])
-
+        files = st.file_uploader(
+            "Upload Files (PDF, Excel, Word)", 
+            accept_multiple_files=True, 
+            type=["pdf", "xlsx", "xls", "docx"]
+        )
         if st.button("Submit & Process"):
             with st.spinner("Processing..."):
-                raw_text = ""
-                if pdf_docs:
-                    raw_text += get_pdf_text(pdf_docs)
-                if excel_files:
-                    raw_text += get_excel_text(excel_files)
-                if word_docs:
-                    raw_text += get_word_text(word_docs)
+                processed_text = process_files(files, mode)
+                if mode == "Q&A" and processed_text:
+                    text_chunks = get_text_chunks(processed_text)
+                    get_vector_store(text_chunks)
+                    st.success("Text-based files processed successfully!")
+                elif mode == "Data Analysis with Excel":
+                    st.success("Excel data analysis completed!")
 
-                text_chunks = get_text_chunks(raw_text)
-                get_vector_store(text_chunks)
-                st.success("Done")
+    # Handle Q&A separately
+    if mode == "Q&A" and user_question:
+        try:
+            embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
+            new_db = FAISS.load_local("faiss_index", embeddings, allow_dangerous_deserialization=True)
+            docs = new_db.similarity_search(user_question)
+            chain = get_conversational_chain()
+            response = chain({"input_documents": docs, "question": user_question}, return_only_outputs=True)
+            st.write("Reply:", response["output_text"])
+        except Exception as e:
+            st.error(f"Error processing your query: {str(e)}")
+            st.warning("Make sure to upload and process the relevant files first.")
+
 
 if __name__ == "__main__":
     main()
+
